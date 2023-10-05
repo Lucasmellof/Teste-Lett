@@ -3,7 +3,7 @@ package com.lucasmellof.teste.product;
 import com.lucasmellof.teste.Helpers;
 import com.lucasmellof.teste.exceptions.AppException;
 import com.lucasmellof.teste.exceptions.InvalidProductRedirectException;
-import com.lucasmellof.teste.exceptions.PriceNotFoundException;
+import com.lucasmellof.teste.exceptions.ProductInfoNotFound;
 import com.lucasmellof.teste.exceptions.ProductNotFoundException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -81,12 +81,23 @@ public class ProductFetcher {
         Document doc = Jsoup.parse(content);
 
         // Aqui vamos pegar o titulo do produto.
-        String title = doc.getElementsByAttribute("data-productName").first().text();
+        Element titleElement = doc.getElementsByAttribute("data-productName").first();
+        if (titleElement == null) {
+            throw new ProductInfoNotFound("Título");
+        }
+        String title = titleElement.text();
 
         // Aqui vamos pegar a descrição do produto.
-        Elements aClass = doc.getElementsByAttributeValue("itemprop", "description");
-        Element first = aClass.first();
-        String description = Objects.requireNonNull(first).getElementsByTag("p").text();
+        Element descriptionElement =
+                doc.getElementsByAttributeValue("itemprop", "description").first();
+        if (descriptionElement == null) {
+            throw new ProductInfoNotFound("Descrição");
+        }
+        Element descriptionParagraph = descriptionElement.getElementsByTag("p").first();
+        if (descriptionParagraph == null) {
+            throw new ProductInfoNotFound("Parágrafo de descrição");
+        }
+        String description = descriptionParagraph.text();
 
         // Aqui vamos pegar as imagens do produto.
         List<Node> nodes = doc.getElementsByClass("photo-figure").first().childNodes();
@@ -96,13 +107,24 @@ public class ProductFetcher {
                 .map(it -> it.split("\\?")[0])
                 .toArray(String[]::new);
 
-        // Aqui vamos fazer todo processo para pegar o preço do produto.
-        String price = doc.getElementsByClass("default-price")
-                .first()
-                .getElementsByTag("span")
-                .first()
-                .getElementsByTag("strong")
-                .text();
+        if (images.length == 0) {
+            throw new ProductInfoNotFound("Imagens");
+        }
+
+        // Aqui vamos fazer todo processo de validação para pegar o preço do produto.
+        Element priceDiv = doc.getElementsByClass("default-price").first();
+        if (priceDiv == null) {
+            throw new ProductInfoNotFound("Div de preço");
+        }
+        Element priceSpan = priceDiv.getElementsByTag("span").first();
+        if (priceSpan == null) {
+            throw new ProductInfoNotFound("Span de preço");
+        }
+        Element priceStrong = priceSpan.getElementsByTag("strong").first();
+        if (priceStrong == null) {
+            throw new ProductInfoNotFound("Strong de preço");
+        }
+        String price = priceStrong.text();
 
         // Todos os dados encontrados, vamos retornar um objeto.
         return new Product(title, description, images, price);
