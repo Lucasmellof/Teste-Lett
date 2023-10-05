@@ -49,6 +49,7 @@ public class Main {
                         continue;
                     }
 
+                    // Vamos verificar se o link é da Netshoes
                     if (!Helpers.isNetshoesUrl(cmd)) {
                         System.out.println("O link digitado não é da Netshoes. Digite um link da Netshoes.");
                         System.out.println();
@@ -59,6 +60,7 @@ public class Main {
                     var product = ProductFetcher.fetch(cmd);
 
                     try {
+                        // Vamos fazer o parse do produto e imprimir os dados
                         Product parse = product.parse();
                         printProduct(parse);
                     } catch (AppException | IOException | InterruptedException e) {
@@ -72,6 +74,7 @@ public class Main {
             }
         }
     }
+
     private static void printProduct(Product product) {
         System.out.println("Produto encontrado!");
         System.out.println();
