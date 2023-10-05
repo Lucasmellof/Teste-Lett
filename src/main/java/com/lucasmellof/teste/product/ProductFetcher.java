@@ -9,12 +9,14 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.nodes.Node;
+import org.jsoup.select.Elements;
 
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Objects;
 import java.util.regex.Matcher;
 
@@ -37,8 +39,11 @@ public class ProductFetcher {
     // conteúdo da página.
     private String getDataFromWeb(String link) throws IOException, InterruptedException, AppException {
         // Vamos criar uma requisição HTTP
-        HttpRequest request =
-                HttpRequest.newBuilder().GET().uri(URI.create(link)).build();
+        HttpRequest request = HttpRequest.newBuilder()
+                .GET()
+                .uri(URI.create(link))
+                .setHeader("User-Agent", Helpers.USER_AGENT)
+                .build();
 
         // Vamos fazer a requisição
         var response = Helpers.HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
@@ -47,20 +52,17 @@ public class ProductFetcher {
         switch (response.statusCode()) {
                 // Caso a URL seja redirecionada, vamos seguir o redirecionamento e pegar o conteúdo da página
             case 301, 302 -> {
-                System.out.println("Received code \"" + response.statusCode() + "\". Redirecting...");
                 // Vamos pegar o caminho do redirecionamento
                 String path =
                         response.headers().firstValue("Location").orElseThrow(InvalidProductRedirectException::new);
 
                 // Vamos pegar a URL base utilizando expressões regulares
-                Matcher matcher = Helpers.BASE_URL_REGEX.matcher(link);
-                if (!matcher.find()) {
+                String basePath = Helpers.getBaseUrl(link);
+                if (basePath == null) {
                     // Caso não encontremos a URL base, vamos lançar uma exceção
                     throw new InvalidProductRedirectException();
                 }
                 // URL base encontrada
-                String basePath = matcher.group();
-
                 // Vamos fazer uma recursão para pegar o conteúdo da página
                 return getDataFromWeb(basePath + path);
             }
@@ -72,37 +74,35 @@ public class ProductFetcher {
     }
 
     // Aqui todo o conteúdo da página já foi baixado, agora vamos fazer o parse do conteúdo e retornar um objeto.
-    public Product parse() throws IOException, InterruptedException {
+    public Product parse() throws AppException, IOException, InterruptedException {
         // Vamos pegar o conteúdo da página.
         String content = getDataFromWeb(this.link);
         // Vamos utilizar a biblioteca Jsoup para fazer o parse do conteúdo.
         Document doc = Jsoup.parse(content);
 
         // Aqui vamos pegar o titulo do produto.
-        String title = doc.getElementsByClass("product-title")
-                .first()
-                .getElementsByTag("h1")
-                .text();
+        String title = doc.getElementsByAttribute("data-productName").first().text();
 
         // Aqui vamos pegar a descrição do produto.
-        String description = doc.getElementsByClass("description-text")
-                .first()
-                .getElementsByTag("p")
-                .text();
+        Elements aClass = doc.getElementsByAttributeValue("itemprop", "description");
+        Element first = aClass.first();
+        String description = Objects.requireNonNull(first).getElementsByTag("p").text();
 
         // Aqui vamos pegar as imagens do produto.
-        String[] images = doc.getElementsByClass("photo-figure").stream()
-                .map(Node::firstChild)
-                .filter(Objects::nonNull)
+        List<Node> nodes = doc.getElementsByClass("photo-figure").first().childNodes();
+        String[] images = nodes.stream()
+                .filter(it -> it.nodeName().equals("img"))
                 .map(it -> it.attr("src"))
                 .map(it -> it.split("\\?")[0])
                 .toArray(String[]::new);
 
         // Aqui vamos fazer todo processo para pegar o preço do produto.
-        String price = doc.getElementsByClass("price__currency").stream()
-                .map(Element::text)
-                .reduce(String::concat)
-                .orElseThrow(PriceNotFoundException::new);
+        String price = doc.getElementsByClass("default-price")
+                .first()
+                .getElementsByTag("span")
+                .first()
+                .getElementsByTag("strong")
+                .text();
 
         // Todos os dados encontrados, vamos retornar um objeto.
         return new Product(title, description, images, price);
